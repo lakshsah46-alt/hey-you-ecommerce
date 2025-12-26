@@ -5,9 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Store, LogOut, Loader2, RefreshCw, Package, Tag, ShoppingBag, Upload, Edit2, Trash2, X, TrendingUp, Calendar, DollarSign, BarChart3, MessageCircle, Send } from "lucide-react";
+import { Store, LogOut, Loader2, RefreshCw, Package, Tag, ShoppingBag, Upload, Edit2, Trash2, X, TrendingUp, Calendar, DollarSign, BarChart3, MessageCircle, Send, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { AttributesManager } from "@/components/admin/AttributesManager";
 import { DeliveryBoysManager } from "@/components/admin/DeliveryBoysManager";
 import { Input } from "@/components/ui/input";
@@ -100,6 +107,7 @@ export default function SellerDashboard() {
   const sellerId = sessionStorage.getItem("seller_id");
   type TabValue = "products" | "attributes" | "orders" | "sales" | "delivery-boys";
   const [activeTab, setActiveTab] = useState<TabValue>("products");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const queryClient = useQueryClient();
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -688,7 +696,64 @@ export default function SellerDashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as TabValue)}>
-          <TabsList className="flex w-max min-w-full sm:min-w-max gap-2 sm:flex-row sm:items-center mb-6">
+          {/* Mobile sidebar */}
+          <div className="sm:hidden mb-4">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="royalOutline" size="sm" className="w-full justify-start">
+                  <Menu className="w-4 h-4 mr-2" />
+                  Menu
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[280px] p-0">
+                <SheetHeader className="p-4 border-b border-border/50">
+                  <SheetTitle>Seller Menu</SheetTitle>
+                </SheetHeader>
+                <div className="p-3">
+                  <div className="grid gap-2">
+                    <Button
+                      variant={activeTab === "products" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("products"); setMobileMenuOpen(false); }}
+                    >
+                      <Package className="w-4 h-4 mr-2" /> Products
+                    </Button>
+                    <Button
+                      variant={activeTab === "attributes" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("attributes"); setMobileMenuOpen(false); }}
+                    >
+                      <Tag className="w-4 h-4 mr-2" /> Attributes
+                    </Button>
+                    <Button
+                      variant={activeTab === "orders" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("orders"); setMobileMenuOpen(false); }}
+                    >
+                      <ShoppingBag className="w-4 h-4 mr-2" /> Orders
+                    </Button>
+                    <Button
+                      variant={activeTab === "sales" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("sales"); setMobileMenuOpen(false); }}
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" /> Sales
+                    </Button>
+                    <Button
+                      variant={activeTab === "delivery-boys" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("delivery-boys"); setMobileMenuOpen(false); }}
+                    >
+                      <Package className="w-4 h-4 mr-2" /> Delivery Boys
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Desktop tabs */}
+          <TabsList className="hidden sm:flex w-max min-w-full sm:min-w-max gap-2 sm:flex-row sm:items-center mb-6">
             <TabsTrigger value="products" className="flex items-center gap-2 whitespace-nowrap w-full justify-start sm:w-auto sm:justify-center">
               <Package className="w-4 h-4" />
               Products
