@@ -87,21 +87,31 @@ export function BannerCarousel({ categories }: BannerCarouselProps) {
         <div className="absolute top-4 left-0 right-0 pointer-events-auto">
           <div className="container mx-auto px-4">
             <div className="bg-background/60 backdrop-blur-md rounded-xl p-2 inline-flex gap-4 overflow-x-auto hide-scrollbar">
-              {categories.slice(0, 12).map((cat: any) => (
-                <a
-                  key={cat.id}
-                  href={`/products?category=${encodeURIComponent(cat.id)}`}
-                  className="flex flex-col items-center text-center min-w-[72px]"
-                >
-                  <div className="w-12 h-12 rounded-md bg-card overflow-hidden flex items-center justify-center">
-                    {cat.image_url ? (
-                      <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">{cat.name?.charAt(0)}</div>
-                    )}
+              {categories.filter((c: any) => c.parent_id == null && c.seller_id == null).slice(0, 12).map((cat: any) => (
+                <div key={cat.id} className="relative group">
+                  <a
+                    href={`/products?category=${encodeURIComponent(cat.id)}`}
+                    className="flex flex-col items-center text-center min-w-[72px]"
+                  >
+                    <div className="w-12 h-12 rounded-md bg-card overflow-hidden flex items-center justify-center">
+                      {cat.image_url ? (
+                        <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-sm text-muted-foreground">{cat.name?.charAt(0)}</div>
+                      )}
+                    </div>
+                    <span className="text-xs mt-1 text-muted-foreground">{cat.name}</span>
+                  </a>
+
+                  {/* Hover flyout showing seller values (desktop) */}
+                  <div className="hidden md:block absolute left-0 top-full mt-2 z-50">
+                    <div className="w-48 bg-card rounded-lg shadow-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                      {(categories.filter((ch: any) => ch.parent_id === cat.id && ch.seller_id) || []).map((ch: any) => (
+                        <a key={ch.id} href={`/products?category=${encodeURIComponent(ch.id)}`} className="block px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 rounded">{ch.name}</a>
+                      ))}
+                    </div>
                   </div>
-                  <span className="text-xs mt-1 text-muted-foreground">{cat.name}</span>
-                </a>
+                </div>
               ))}
             </div>
           </div>

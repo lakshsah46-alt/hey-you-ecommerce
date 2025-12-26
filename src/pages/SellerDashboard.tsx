@@ -105,7 +105,7 @@ export default function SellerDashboard() {
   const sellerEmail = sessionStorage.getItem("seller_email");
   const sellerName = sessionStorage.getItem("seller_name");
   const sellerId = sessionStorage.getItem("seller_id");
-  type TabValue = "products" | "attributes" | "orders" | "sales" | "delivery-boys";
+  type TabValue = "products" | "attributes" | "orders" | "sales" | "delivery-boys" | "categories";
   const [activeTab, setActiveTab] = useState<TabValue>("products");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -131,6 +131,7 @@ export default function SellerDashboard() {
     stock_status: "in_stock",
     stock_quantity: "0",
     category_id: "",
+    main_category_id: "",
     cash_on_delivery: false,
     features: [{ feature: "" }] as { feature: string }[],
     height: "",
@@ -279,7 +280,7 @@ export default function SellerDashboard() {
     enabled: !!(seller?.id || sellerId),
   });
 
-  const { data: categories } = useQuery({
+  const { data: categories, refetch: refetchCategories } = useQuery({
     queryKey: ["public-categories"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -293,7 +294,92 @@ export default function SellerDashboard() {
     },
   });
 
-  // Removed seller-specific category creation. Sellers can only choose from admin categories.
+  // Seller-created category values (child categories where seller_id = this seller)
+  const { data: sellerCategoryValues, refetch: refetchSellerCategoryValues } = useQuery({
+    queryKey: ["seller-category-values", seller?.id || sellerId],
+    queryFn: async () => {
+      const id = seller?.id || sellerId;
+      if (!id) return [] as Category[];
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .eq("seller_id", id)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data as Category[];
+    },
+    enabled: !!(seller?.id || sellerId),
+  });
+
+  const valuesByParent = (sellerCategoryValues || []).reduce((acc: Record<string, Category[]>, v) => {
+    const parent = v.parent_id || "";
+    if (!acc[parent]) acc[parent] = [];
+    acc[parent].push(v);
+    return acc;
+  }, {} as Record<string, Category[]>);
+
+  const [valueDialogOpen, setValueDialogOpen] = useState(false);
+  const [editingValue, setEditingValue] = useState<Category | null>(null);
+  const [valueForm, setValueForm] = useState({ name: "", description: "", parent_id: "" });
+
+  const addValueMutation = useMutation({
+    mutationFn: async (payload: { name: string; description?: string; parent_id: string }) => {
+      const activeSellerId = seller?.id || sellerId;
+      if (!activeSellerId) throw new Error("Seller not detected");
+      const data = {
+        name: payload.name,
+        description: payload.description || null,
+        parent_id: payload.parent_id,
+        seller_id: activeSellerId,
+        sort_order: 0,
+        is_active: true,
+      };
+      const { error } = await supabase.from("categories").insert(data);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refetchSellerCategoryValues && refetchSellerCategoryValues();
+      refetchCategories && refetchCategories();
+      toast.success("Value added");
+      setValueDialogOpen(false);
+      setValueForm({ name: "", description: "", parent_id: "" });
+      setEditingValue(null);
+    },
+    onError: () => toast.error("Failed to add value"),
+  });
+
+  const updateValueMutation = useMutation({
+    mutationFn: async (payload: { id: string; name: string; description?: string }) => {
+      const activeSellerId = seller?.id || sellerId;
+      if (!activeSellerId) throw new Error("Seller not detected");
+      const data = { name: payload.name, description: payload.description || null };
+      const { error } = await supabase.from("categories").update(data).eq("id", payload.id).eq("seller_id", activeSellerId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refetchSellerCategoryValues && refetchSellerCategoryValues();
+      toast.success("Value updated");
+      setValueDialogOpen(false);
+      setEditingValue(null);
+    },
+    onError: () => toast.error("Failed to update value"),
+  });
+
+  const deleteValueMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const activeSellerId = seller?.id || sellerId;
+      if (!activeSellerId) throw new Error("Seller not detected");
+      const { error } = await supabase.from("categories").delete().eq("id", id).eq("seller_id", activeSellerId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refetchSellerCategoryValues && refetchSellerCategoryValues();
+      toast.success("Value deleted");
+    },
+    onError: () => toast.error("Failed to delete value"),
+  });
+
+  // Sellers can view admin categories and add/edit/delete their own "values" (child categories) under them.
 
   const { data: orders, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ["seller-orders", seller?.id || sellerId],
@@ -522,6 +608,7 @@ export default function SellerDashboard() {
       stock_status: "in_stock",
       stock_quantity: "0",
       category_id: "",
+      main_category_id: "",
       cash_on_delivery: false,
       features: [{ feature: "" }],
       height: "",
@@ -540,7 +627,25 @@ export default function SellerDashboard() {
 
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
-    setProductForm({
+    (async () => {
+      let mainCatId = "";
+      if (product.category_id) {
+        const adminCat = (categories || []).find(c => c.id === product.category_id);
+        if (adminCat) mainCatId = product.category_id;
+        else {
+          const localVal = (sellerCategoryValues || []).find(c => c.id === product.category_id);
+          if (localVal) mainCatId = localVal.parent_id || "";
+          else {
+            try {
+              const { data: catData } = await supabase.from("categories").select("parent_id").eq("id", product.category_id).maybeSingle();
+              if (catData && (catData as any).parent_id) mainCatId = (catData as any).parent_id;
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      }
+      setProductForm({
       name: product.name || "",
       description: product.description || "",
       detailed_description: product.detailed_description || "",
@@ -549,6 +654,7 @@ export default function SellerDashboard() {
       stock_status: product.stock_status || "in_stock",
       stock_quantity: String(product.stock_quantity ?? "0"),
       category_id: product.category_id || "",
+      main_category_id: mainCatId,
       cash_on_delivery: Boolean(product.cash_on_delivery),
       features: Array.isArray(product.features) ? product.features : [{ feature: "" }],
       height: product.height || "",
@@ -559,7 +665,8 @@ export default function SellerDashboard() {
       seller_name: seller?.name || sellerName || "",
       seller_description: product.seller_description || "",
       gst_percentage: product.gst_percentage != null ? String(product.gst_percentage) : "",
-    });
+      });
+    })();
     setProductImages(product.images || (product.image_url ? [product.image_url] : []));
     setHasVariantImages(false);
     setProductDialogOpen(true);
@@ -635,7 +742,7 @@ export default function SellerDashboard() {
         images: productImages,
         stock_status: product.stock_status,
         stock_quantity: parseInt(product.stock_quantity) || 0,
-        category_id: product.category_id || null,
+        category_id: product.category_id || product.main_category_id || null,
         cash_on_delivery: Boolean(product.cash_on_delivery),
         features: product.features,
         detailed_description: product.detailed_description || null,
@@ -818,6 +925,13 @@ export default function SellerDashboard() {
                     >
                       <Package className="w-4 h-4 mr-2" /> Delivery Boys
                     </Button>
+                    <Button
+                      variant={activeTab === "categories" ? "royal" : "ghost"}
+                      className="justify-start"
+                      onClick={() => { setActiveTab("categories"); setMobileMenuOpen(false); }}
+                    >
+                      <Tag className="w-4 h-4 mr-2" /> Categories
+                    </Button>
                   </div>
                 </div>
               </SheetContent>
@@ -845,6 +959,10 @@ export default function SellerDashboard() {
             <TabsTrigger value="delivery-boys" className="flex items-center gap-2 whitespace-nowrap w-full justify-start sm:w-auto sm:justify-center">
               <Package className="w-4 h-4" />
               Delivery Boys
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="flex items-center gap-2 whitespace-nowrap w-full justify-start sm:w-auto sm:justify-center">
+              <Tag className="w-4 h-4" />
+              Categories
             </TabsTrigger>
           </TabsList>
 
@@ -1117,22 +1235,46 @@ export default function SellerDashboard() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor="category">Category</Label>
-                        <Select
-                          value={productForm.category_id}
-                          onValueChange={(value) => setProductForm({ ...productForm, category_id: value })}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(categories || []).map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                {category.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div>
+                          <Label>Main Category (admin)</Label>
+                          <Select
+                            value={productForm.main_category_id}
+                            onValueChange={(value) => setProductForm({ ...productForm, main_category_id: value, category_id: "" })}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select main category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(categories || []).map((category) => (
+                                <SelectItem key={category.id} value={category.id}>
+                                  {category.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <Label className="mt-3">Your Category (value)</Label>
+                          <Select
+                            value={productForm.category_id || (productForm.main_category_id || "")}
+                            onValueChange={(value) => {
+                              if (value === "use-main") {
+                                setProductForm({ ...productForm, category_id: productForm.main_category_id || "" });
+                              } else {
+                                setProductForm({ ...productForm, category_id: value });
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select your category (or use main)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="use-main">Use main category</SelectItem>
+                              {((sellerCategoryValues || []).filter((v: any) => v.parent_id === productForm.main_category_id)).map((val: any) => (
+                                <SelectItem key={val.id} value={val.id}>{val.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       <div className="flex items-center gap-3 pt-6">
                         <Switch
@@ -1719,6 +1861,128 @@ export default function SellerDashboard() {
 
           <TabsContent value="delivery-boys" className="space-y-6">
             <DeliveryBoysManager sellerId={sellerId || undefined} />
+          </TabsContent>
+          <TabsContent value="categories" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-2xl font-bold">Product Categories</h2>
+                <p className="text-sm text-muted-foreground">Admin-created categories (read-only)</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="icon" onClick={() => refetchCategories && refetchCategories()}>
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {(!categories || categories.length === 0) ? (
+              <div className="text-center py-12 bg-card rounded-xl border border-border/50">
+                <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-muted-foreground">No categories available</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {categories.map((category) => (
+                  <div key={category.id} className="p-4 bg-card rounded-xl border border-border/50">
+                    <div className="flex items-start gap-4">
+                      {category.image_url && (
+                        <img src={category.image_url} alt={category.name} className="w-20 h-20 object-cover rounded-lg" />
+                      )}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-foreground">{category.name}</h3>
+                            {category.description && <p className="text-sm text-muted-foreground line-clamp-2">{category.description}</p>}
+                            <p className="text-xs text-muted-foreground mt-1">Order: {category.sort_order} {category.is_active ? '✓' : '✗'}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Dialog open={valueDialogOpen && valueForm.parent_id === category.id && !editingValue} onOpenChange={(open) => { if (!open) { setValueDialogOpen(false); setValueForm({ name: "", description: "", parent_id: "" }); } }}>
+                              <DialogTrigger asChild>
+                                <Button variant="royal" size="sm" onClick={() => { setValueForm({ name: "", description: "", parent_id: category.id }); setEditingValue(null); setValueDialogOpen(true); }}>
+                                  Add Value
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Add Value under {category.name}</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-3">
+                                  <div>
+                                    <Label>Name *</Label>
+                                    <Input value={valueForm.name} onChange={(e) => setValueForm({ ...valueForm, name: e.target.value })} className="mt-1" />
+                                  </div>
+                                  <div>
+                                    <Label>Description</Label>
+                                    <Textarea value={valueForm.description} onChange={(e) => setValueForm({ ...valueForm, description: e.target.value })} className="mt-1" rows={3} />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button variant="royal" onClick={() => addValueMutation.mutate({ name: valueForm.name, description: valueForm.description, parent_id: category.id })} disabled={!valueForm.name || addValueMutation.isPending}>
+                                      {addValueMutation.isPending ? 'Saving...' : 'Save'}
+                                    </Button>
+                                    <Button variant="ghost" onClick={() => { setValueDialogOpen(false); setValueForm({ name: "", description: "", parent_id: "" }); }}>Cancel</Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </div>
+
+                        {/* Values list */}
+                        <div className="mt-4">
+                          <Label className="text-sm">Values</Label>
+                          <div className="mt-2 space-y-2">
+                            {(valuesByParent[category.id] || []).length === 0 ? (
+                              <div className="text-sm text-muted-foreground">No values added by you</div>
+                            ) : (
+                              (valuesByParent[category.id] || []).map((val) => (
+                                <div key={val.id} className="flex items-center justify-between gap-3 p-2 bg-background rounded">
+                                  <div>
+                                    <div className="text-sm font-medium">{val.name}</div>
+                                    {val.description && <div className="text-xs text-muted-foreground">{val.description}</div>}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="ghost" onClick={() => { setEditingValue(val); setValueForm({ name: val.name, description: val.description || "", parent_id: val.parent_id || "" }); setValueDialogOpen(true); }}>
+                                      <Edit2 className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteValueMutation.mutate(val.id)}>
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Edit dialog for value */}
+                    <Dialog open={valueDialogOpen && !!editingValue} onOpenChange={(open) => { if (!open) { setValueDialogOpen(false); setEditingValue(null); setValueForm({ name: "", description: "", parent_id: "" }); } }}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Edit Value</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <div>
+                            <Label>Name *</Label>
+                            <Input value={valueForm.name} onChange={(e) => setValueForm({ ...valueForm, name: e.target.value })} className="mt-1" />
+                          </div>
+                          <div>
+                            <Label>Description</Label>
+                            <Textarea value={valueForm.description} onChange={(e) => setValueForm({ ...valueForm, description: e.target.value })} className="mt-1" rows={3} />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="royal" onClick={() => editingValue && updateValueMutation.mutate({ id: editingValue.id, name: valueForm.name, description: valueForm.description })} disabled={!valueForm.name || updateValueMutation.isPending}>
+                              {updateValueMutation.isPending ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button variant="ghost" onClick={() => { setValueDialogOpen(false); setEditingValue(null); setValueForm({ name: "", description: "", parent_id: "" }); }}>Cancel</Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>

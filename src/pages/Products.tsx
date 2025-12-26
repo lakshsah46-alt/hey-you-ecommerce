@@ -79,21 +79,31 @@ export default function Products() {
         {categories && categories.length > 0 && (
           <div className="mt-4 overflow-x-auto hide-scrollbar">
             <div className="flex items-center gap-6 py-3 justify-center">
-              {categories.slice(0, 12).map((cat: any) => (
-                <button
-                  key={cat.id}
-                  onClick={() => { setSelectedCategory(cat.id); setCurrentPage(1); }}
-                  className={`flex flex-col items-center text-center min-w-[88px] ${selectedCategory === cat.id ? 'opacity-100' : 'opacity-80'}`}
-                >
-                  <div className="w-14 h-14 rounded-lg bg-card overflow-hidden shadow-sm flex items-center justify-center">
-                    {cat.image_url ? (
-                      <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">{cat.name?.charAt(0)}</div>
-                    )}
+              {categories.filter((c: any) => c.parent_id == null && c.seller_id == null).slice(0, 12).map((cat: any) => (
+                <div key={cat.id} className="relative group">
+                  <button
+                    onClick={() => { setSelectedCategory(cat.id); setCurrentPage(1); }}
+                    className={`flex flex-col items-center text-center min-w-[88px] ${selectedCategory === cat.id ? 'opacity-100' : 'opacity-80'}`}
+                  >
+                    <div className="w-14 h-14 rounded-lg bg-card overflow-hidden shadow-sm flex items-center justify-center">
+                      {cat.image_url ? (
+                        <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-sm text-muted-foreground">{cat.name?.charAt(0)}</div>
+                      )}
+                    </div>
+                    <span className="text-xs mt-2 text-muted-foreground">{cat.name}</span>
+                  </button>
+
+                  {/* Desktop hover flyout */}
+                  <div className="hidden md:block absolute left-0 top-full mt-2 z-50">
+                    <div className="w-56 bg-card rounded-lg shadow-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                      {(categories.filter((ch: any) => ch.parent_id === cat.id && ch.seller_id) || []).map((ch: any) => (
+                        <button key={ch.id} onClick={() => { setSelectedCategory(ch.id); setCurrentPage(1); }} className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 rounded">{ch.name}</button>
+                      ))}
+                    </div>
                   </div>
-                  <span className="text-xs mt-2 text-muted-foreground">{cat.name}</span>
-                </button>
+                </div>
               ))}
             </div>
           </div>

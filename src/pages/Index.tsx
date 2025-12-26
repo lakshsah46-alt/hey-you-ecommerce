@@ -64,6 +64,8 @@ export default function Index() {
         .from('categories')
         .select('*')
         .eq('is_active', true)
+        // Only show categories created by admin (no seller_id)
+        .is('seller_id', null)
         .order('sort_order', { ascending: true });
       if (error) throw error;
       return data;

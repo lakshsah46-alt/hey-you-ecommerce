@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { PriceRange } from "@/components/ui/price-range";
 
 interface FilterMenuProps {
-  categories: { id: string; name: string }[] | undefined;
+  categories: { id: string; name: string; parent_id?: string | null; seller_id?: string | null }[] | undefined;
   selectedCategory: string;
   setSelectedCategory: (value: string) => void;
   filter: 'all' | 'in_stock' | 'on_sale';
@@ -50,6 +50,7 @@ export function FilterMenu({
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [selectedMain, setSelectedMain] = useState<string>('all');
   
   // Initialize sliderValue with minProductPrice and maxProductPrice or default values
   const defaultMin = minProductPrice ?? 0;
@@ -143,27 +144,49 @@ export function FilterMenu({
   // Mobile filter panel
   const MobileFilterPanel = () => (
     <div className="space-y-6 py-4">
-      {/* Category Filter */}
+      {/* Category Filter: two-step (Sector -> Seller category) */}
       <div>
         <h3 className="font-medium mb-3">Categories</h3>
         <div className="space-y-2">
+          <div className="text-sm text-muted-foreground mb-2">1. Select Sector (main category)</div>
           <Button
-            variant={selectedCategory === 'all' ? 'royal' : 'outline'}
+            variant={selectedMain === 'all' ? 'royal' : 'outline'}
             className="w-full justify-start"
-            onClick={() => setSelectedCategory('all')}
+            onClick={() => { setSelectedMain('all'); setSelectedCategory('all'); }}
           >
-            All Categories
+            All Sectors
           </Button>
-          {categories?.map((category) => (
+          {(categories || []).filter(c => c.parent_id == null && c.seller_id == null).map((category) => (
             <Button
               key={category.id}
-              variant={selectedCategory === category.id ? 'royal' : 'outline'}
+              variant={selectedMain === category.id ? 'royal' : 'outline'}
               className="w-full justify-start"
-              onClick={() => setSelectedCategory(category.id)}
+              onClick={() => { setSelectedMain(category.id); setSelectedCategory(category.id); }}
             >
               {category.name}
             </Button>
           ))}
+
+          <div className="mt-4 text-sm text-muted-foreground">2. Select Category (created by sellers)</div>
+          <div className="space-y-2 mt-2">
+            <Button
+              variant={selectedCategory === selectedMain ? 'royal' : 'outline'}
+              className="w-full justify-start"
+              onClick={() => setSelectedCategory(selectedMain === 'all' ? 'all' : selectedMain)}
+            >
+              Use Sector
+            </Button>
+            {(categories || []).filter(c => c.parent_id && c.parent_id === selectedMain && c.seller_id).map((category) => (
+              <Button
+                key={category.id}
+                variant={selectedCategory === category.id ? 'royal' : 'outline'}
+                className="w-full justify-start"
+                onClick={() => setSelectedCategory(category.id)}
+              >
+                {category.name}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
       
