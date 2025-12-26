@@ -144,6 +144,21 @@ export default function AdminCMS() {
     is_active: true,
   });
 
+  // Product picker states for Sections (so admins don't need raw IDs)
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+
+  // Keep the sectionForm.content in sync with selected product IDs (merge, don't overwrite other keys)
+  useEffect(() => {
+    setSectionForm(prev => {
+      let parsed: any = {};
+      try { parsed = JSON.parse(prev.content); } catch (e) { parsed = {}; }
+      parsed.product_ids = selectedProductIds;
+      return { ...prev, content: JSON.stringify(parsed, null, 2) };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProductIds]);
+
   const [categoryForm, setCategoryForm] = useState({
     name: '',
     description: '',
@@ -211,6 +226,35 @@ export default function AdminCMS() {
         .order('sort_order', { ascending: true });
       if (error) throw error;
       return data as HomeSection[];
+    },
+  });
+
+  // Products used by admin CMS (searchable) - used for product picker in Sections
+  const { data: adminProducts } = useQuery({
+    queryKey: ['admin-products', productSearch],
+    queryFn: async () => {
+      const q = productSearch?.trim() ? `%${productSearch.trim()}%` : '%';
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .ilike('name', q)
+        .limit(50);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: selectedProductsData } = useQuery({
+    queryKey: ['products-by-ids', selectedProductIds],
+    enabled: selectedProductIds && selectedProductIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .in('id', selectedProductIds)
+        .limit(50);
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -410,11 +454,17 @@ export default function AdminCMS() {
         parsedContent = {};
       }
       
+      let layoutConfig = { columns: 5, rows: 2 };
+      if (section.section_type === 'deal_grid' && parsedContent.layoutConfig) {
+        layoutConfig = parsedContent.layoutConfig;
+      }
+      
       const data = {
         section_type: section.section_type,
         title: section.title || null,
         subtitle: section.subtitle || null,
         content: parsedContent,
+        layout_config: layoutConfig,
         sort_order: parseInt(section.sort_order) || 0,
         is_active: section.is_active,
       };
@@ -504,6 +554,7 @@ export default function AdminCMS() {
   const resetSectionForm = () => {
     setSectionForm({ section_type: 'custom', title: '', subtitle: '', content: '{}', sort_order: '0', is_active: true });
     setEditingSection(null);
+    setSelectedProductIds([]);
   };
 
   const resetCategoryForm = () => {
@@ -560,6 +611,17 @@ export default function AdminCMS() {
       sort_order: section.sort_order.toString(),
       is_active: section.is_active,
     });
+    // If section content contains product_ids, populate the picker
+    try {
+      const parsed = section.content || {};
+      if (Array.isArray((parsed as any).product_ids)) {
+        setSelectedProductIds((parsed as any).product_ids as string[]);
+      } else {
+        setSelectedProductIds([]);
+      }
+    } catch (e) {
+      setSelectedProductIds([]);
+    }
     setSectionDialogOpen(true);
   };
 
@@ -962,10 +1024,24 @@ export default function AdminCMS() {
                     <DialogHeader>
                       <DialogTitle className="font-display">{editingSection ? 'Edit Section' : 'Add Section'}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={(e) => { e.preventDefault(); sectionMutation.mutate({ ...sectionForm, id: editingSection?.id }); }} className="space-y-4">
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        // Ensure product_ids are included from picker
+                        let contentObj = {};
+                        try { contentObj = JSON.parse(sectionForm.content); } catch (err) { contentObj = {}; }
+                        contentObj.product_ids = selectedProductIds;
+                        sectionMutation.mutate({ ...sectionForm, content: JSON.stringify(contentObj), id: editingSection?.id });
+                      }} className="space-y-4">
                       <div>
                         <Label htmlFor="section-type">Section Type</Label>
                         <Input id="section-type" value={sectionForm.section_type} onChange={(e) => setSectionForm({ ...sectionForm, section_type: e.target.value })} placeholder="hero, features, cta, custom" className="mt-1" />
+                        <div className="mt-2 p-3 bg-blue-50 rounded text-sm text-blue-900">
+                          <p className="font-semibold mb-2">📌 Common Types:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li><strong>top_deals:</strong> Horizontal scrollable product carousel</li>
+                            <li><strong>deal_grid:</strong> 2x2 product grid with large images</li>
+                          </ul>
+                        </div>
                       </div>
                       <div>
                         <Label htmlFor="section-title">Title</Label>
@@ -979,6 +1055,121 @@ export default function AdminCMS() {
                         <Label htmlFor="section-content">Content (JSON)</Label>
                         <Textarea id="section-content" value={sectionForm.content} onChange={(e) => setSectionForm({ ...sectionForm, content: e.target.value })} placeholder='{"buttonText": "Shop Now"}' className="mt-1 font-mono text-sm" rows={4} />
                       </div>
+
+                      {(sectionForm.section_type === 'top_deals' || sectionForm.section_type === 'deal_grid') && (
+                        <div className="space-y-4">
+                          {sectionForm.section_type === 'deal_grid' && (
+                            <div className="p-3 bg-purple-50 rounded text-sm text-purple-900">
+                              <p className="font-semibold mb-2">🎯 Grid Layout:</p>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <Label htmlFor="grid-cols" className="text-xs text-purple-900">Columns</Label>
+                                  <Input 
+                                    id="grid-cols" 
+                                    type="number" 
+                                    min="1" 
+                                    max="6" 
+                                    value={(() => {
+                                      try {
+                                        const parsed = JSON.parse(sectionForm.content);
+                                        return parsed.layoutConfig?.columns || 5;
+                                      } catch {
+                                        return 5;
+                                      }
+                                    })()}
+                                    onChange={(e) => {
+                                      let parsed: any = {};
+                                      try { parsed = JSON.parse(sectionForm.content); } catch (err) { parsed = {}; }
+                                      if (!parsed.layoutConfig) parsed.layoutConfig = { columns: 5, rows: 2 };
+                                      parsed.layoutConfig.columns = parseInt(e.target.value) || 5;
+                                      setSectionForm({ ...sectionForm, content: JSON.stringify(parsed) });
+                                    }}
+                                    className="mt-1"
+                                    placeholder="5"
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor="grid-rows" className="text-xs text-purple-900">Rows</Label>
+                                  <Input 
+                                    id="grid-rows" 
+                                    type="number" 
+                                    min="1" 
+                                    max="4" 
+                                    value={(() => {
+                                      try {
+                                        const parsed = JSON.parse(sectionForm.content);
+                                        return parsed.layoutConfig?.rows || 2;
+                                      } catch {
+                                        return 2;
+                                      }
+                                    })()}
+                                    onChange={(e) => {
+                                      let parsed: any = {};
+                                      try { parsed = JSON.parse(sectionForm.content); } catch (err) { parsed = {}; }
+                                      if (!parsed.layoutConfig) parsed.layoutConfig = { columns: 5, rows: 2 };
+                                      parsed.layoutConfig.rows = parseInt(e.target.value) || 2;
+                                      setSectionForm({ ...sectionForm, content: JSON.stringify(parsed) });
+                                    }}
+                                    className="mt-1"
+                                    placeholder="2"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div>
+                            <Label>Pick Products (search below)</Label>
+                            <Input placeholder="Search products by name" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} className="mt-2" />
+
+                            <div className="mt-3 grid gap-2 max-h-48 overflow-auto">
+                              {adminProducts && adminProducts.length > 0 ? (
+                                adminProducts.map((p: any) => {
+                                  const isSelected = selectedProductIds.includes(p.id);
+                                  return (
+                                    <div key={p.id} className="flex items-center gap-3 p-2 bg-background rounded">
+                                      <div className="w-12 h-12 rounded overflow-hidden bg-card flex-shrink-0">
+                                        {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <div className="text-xs text-muted-foreground p-2">No Image</div>}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm line-clamp-1">{p.name}</div>
+                                        <div className="text-xs text-muted-foreground">₹{Number(p.price).toLocaleString('en-IN')}</div>
+                                      </div>
+                                      <div>
+                                        <Button size="sm" variant={isSelected ? 'ghost' : 'royal'} onClick={() => {
+                                          if (isSelected) {
+                                            setSelectedProductIds(ids => ids.filter(id => id !== p.id));
+                                          } else {
+                                            setSelectedProductIds(ids => [...ids, p.id]);
+                                          }
+                                        }}>{isSelected ? 'Remove' : 'Add'}</Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="text-sm text-muted-foreground">No products found</div>
+                              )}
+                            </div>
+
+                            {selectedProductIds && selectedProductIds.length > 0 && (
+                              <div className="mt-3">
+                                <Label>Selected Products</Label>
+                                <div className="flex gap-2 flex-wrap mt-2">
+                                  {(selectedProductsData || []).map((sp: any) => (
+                                    <div key={sp.id} className="px-3 py-1 bg-card rounded-full flex items-center gap-2">
+                                      <span className="text-sm">{sp.name}</span>
+                                      <Button size="icon" variant="ghost" onClick={() => setSelectedProductIds(ids => ids.filter(id => id !== sp.id))}>
+                                        <X className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="section-order">Sort Order</Label>

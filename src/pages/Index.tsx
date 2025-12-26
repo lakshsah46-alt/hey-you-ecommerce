@@ -3,6 +3,8 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { BannerCarousel } from "@/components/home/BannerCarousel";
+import TopDeals from "@/components/home/TopDeals";
+import DealGrid from "@/components/home/DealGrid";
 import { SpecialOfferPopup } from "@/components/SpecialOfferPopup";
 import { Crown, Sparkles, Truck, Shield, Gift } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -151,6 +153,18 @@ export default function Index() {
           </div>
         </div>
       </section>
+
+      {/* Top Deals (new) — placed after hero so hero remains visually above */}
+      <TopDeals />
+
+      {/* Render any 'deal_grid' sections from CMS (compact, below hero) */}
+      {sections && sections.length > 0 && (
+        <>
+          {sections.filter((s: any) => s.section_type === 'deal_grid' && s.is_active).map((s: any) => (
+            <DealGrid key={s.id} section={s} />
+          ))}
+        </>
+      )}
 
       {/* Features Section */}
       {featuresSection && (

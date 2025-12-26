@@ -2,6 +2,7 @@ import { Layout } from "@/components/layout/Layout";
 import { ProductCard } from "@/components/products/ProductCard";
 import { FilterMenu } from "@/components/products/FilterMenu";
 import { SearchBar } from "@/components/SearchBar";
+import TopDeals from "@/components/home/TopDeals";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -240,6 +241,9 @@ export default function Products() {
             />
           </div>
         </div>
+
+          {/* Top Deals strip for collection page */}
+          <TopDeals />
 
         {/* Filter Menu */}
         <FilterMenu

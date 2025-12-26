@@ -111,7 +111,10 @@ export function BannerCarousel({ categories }: BannerCarouselProps) {
         // Use transformed image URL for better quality
         src={getTransformedImageUrl(currentBanner.image_url, 1920, 1080)}
         alt={currentBanner.title || 'Banner'}
-        className="w-full h-full object-cover transition-transform duration-700"
+        className="w-full h-full object-cover"
+        style={{ 
+          animation: 'bannerFadeInOut 0.8s ease-in-out',
+        }}
         // Add loading optimization
         loading="eager"
       />
@@ -187,26 +190,6 @@ export function BannerCarousel({ categories }: BannerCarouselProps) {
   return (
     <>
       <BannerContent />
-
-      {/* Thumbnail row of other banners below main banner */}
-      {banners.length > 1 && (
-        <div className="mt-4 container mx-auto px-4">
-          <div className="flex gap-3 items-center overflow-x-auto hide-scrollbar">
-            {banners.map((b, i) => (
-              <button
-                key={b.id}
-                onClick={() => setCurrentIndex(i)}
-                className={cn(
-                  'w-36 h-20 rounded-lg overflow-hidden flex-shrink-0 border transition-transform',
-                  i === currentIndex ? 'scale-105 border-primary' : 'border-border/30'
-                )}
-              >
-                <img src={getTransformedImageUrl(b.image_url, 600, 300)} alt={b.title || 'Banner'} className="w-full h-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </>
   );
 }
