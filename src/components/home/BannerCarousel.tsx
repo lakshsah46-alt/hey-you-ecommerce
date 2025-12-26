@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,8 @@ interface BannerCarouselProps {
 
 export function BannerCarousel({ categories }: BannerCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const { data: banners, isLoading } = useQuery({
     queryKey: ['home-banners'],
@@ -69,6 +71,23 @@ export function BannerCarousel({ categories }: BannerCarouselProps) {
     const interval = setInterval(nextSlide, 5000);
     return () => clearInterval(interval);
   }, [banners, nextSlide]);
+
+  // Close open seller menus on outside click or when banner changes
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      // if click is outside any open menu, close
+      if (openMenuFor) {
+        const menuEl = document.getElementById(`seller-menu-${openMenuFor}`);
+        if (menuEl && !menuEl.contains(target)) {
+          setOpenMenuFor(null);
+        }
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [openMenuFor]);
 
   if (isLoading) {
     return <Skeleton className="w-full aspect-[21/9] rounded-2xl" />;
@@ -105,11 +124,43 @@ export function BannerCarousel({ categories }: BannerCarouselProps) {
 
                   {/* Hover flyout showing seller values (desktop) */}
                   <div className="hidden md:block absolute left-0 top-full mt-2 z-50">
-                    <div className="w-48 bg-card rounded-lg shadow-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-                      {(categories.filter((ch: any) => ch.parent_id === cat.id && ch.seller_id) || []).map((ch: any) => (
-                        <a key={ch.id} href={`/products?category=${encodeURIComponent(ch.id)}`} className="block px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 rounded">{ch.name}</a>
-                      ))}
+                    <div ref={containerRef} className={"min-w-[220px] bg-card rounded-lg shadow-lg p-2 transition-opacity " + (openMenuFor === cat.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none') + " group-hover:opacity-100 group-hover:pointer-events-auto"}>
+                      {
+                        // Group child categories by seller_id so we can show seller name as a header
+                        (() => {
+                          const children = (categories.filter((ch: any) => ch.parent_id === cat.id && ch.seller_id) || []);
+                          const grouped: Record<string, any[]> = {};
+                          children.forEach((c: any) => {
+                            const key = c.seller_id || 'unknown';
+                            if (!grouped[key]) grouped[key] = [];
+                            grouped[key].push(c);
+                          });
+
+                          return Object.entries(grouped).map(([sellerId, items]) => (
+                            <div key={sellerId} className="mb-2">
+                              <div className="px-3 py-1 text-sm font-medium text-foreground border-b border-border/30">{(items[0] as any).seller_name || 'Seller'}</div>
+                              <div>
+                                {items.map((ch: any) => (
+                                  <a key={ch.id} href={`/products?category=${encodeURIComponent(ch.id)}`} className="block px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 rounded">{ch.name}</a>
+                                ))}
+                              </div>
+                            </div>
+                          ));
+                        })()
+                      }
                     </div>
+                  </div>
+                  {/* Click toggle button for showing seller menu on click (desktop) */}
+                  <div className="absolute right-0 top-0 mt-1 mr-1">
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenMenuFor(openMenuFor === cat.id ? null : cat.id); }}
+                      className="hidden md:inline-flex items-center justify-center w-6 h-6 rounded-full bg-background/80 hover:bg-background text-sm"
+                      aria-expanded={openMenuFor === cat.id}
+                      aria-controls={`seller-menu-${cat.id}`}
+                      title="Show seller categories"
+                    >
+                      ▾
+                    </button>
                   </div>
                 </div>
               ))}
